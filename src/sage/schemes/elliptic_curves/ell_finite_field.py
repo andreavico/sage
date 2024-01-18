@@ -275,11 +275,16 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
 
         return [self.cardinality(extension_degree=i) for i in range(1, n + 1)]
 
-    def random_element(self):
+    def random_element(self, order=None):
         """
-        Return a random point on this elliptic curve, uniformly chosen
-        among all rational points.
+        If order = None, return a random point on this elliptic curve,
+        uniformly chosen among all rational points. Otherwise, return
+        a random point of given order.
 
+        INPUT:
+
+        - ``order`` (int) -- if specified, the order of the generated point.
+        
         ALGORITHM:
 
         Choose the point at infinity with probability `1/(2q + 1)`.
@@ -296,6 +301,11 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
         gives a 1-to-1 map of elliptic curve points into buckets. At
         every iteration, we simply choose a random bucket until we find
         a bucket containing a point.
+
+        If a specific order is requested, keep sampling a point as above
+        and scaling it by the appropriate cofactor until it has the
+        desired order. This method only works if elliptic curve is
+        supersingular with non-cyclic group of points.
 
         AUTHORS:
 
@@ -344,6 +354,34 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
             sage: while len(S) < E.cardinality():
             ....:     S.add(E.random_element())
 
+        ::
+
+            sage: # needs sage.rings.finite_rings
+            sage: k.<a> = GF(863^2)
+            sage: E = EllipticCurve(k, [0,1])
+            sage: P = E.random_element(order=32); P  # random
+            (626*a + 484 : 456*a + 23 : 1)
+            sage: P.order()
+            32
+            sage: P = E.random_element(order=31)
+            Traceback (most recent call last):
+            ...
+            ValueError: The curve does not have a point of order 31
+
+        Ensure that the entire point set is reachable::
+
+            sage: E = EllipticCurve(GF(11), [2,1])
+            sage: S = set()
+            sage: while len(S) < E.cardinality():
+            ....:     S.add(E.random_element())
+
+        ::
+
+            sage: E = EllipticCurve(GF(863^2), [0,1])
+            sage: S = set()
+            sage: while len(S) < 12: # we expect 12 (= 16 - 4) points of order 4 
+            ....:     S.add(E.random_element(order=4))
+
         TESTS:
 
         See :trac:`8311`::
@@ -367,21 +405,71 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
             (0 : 1 : 0)
             sage: E.cardinality()
             1
+
+            sage: p = 863
+            sage: F = GF(863^2)
+            sage: E = EllipticCurve(F, [1,0])
+            sage: for i in range(5):
+            ....:     P = E.random_point(order=2^i)
+            ....:     assert P.order() == 2^i
+            sage: E = E.quadratic_twist()
+            sage: P = E.random_point(order=431)
+            sage: P.order() == 431
+            True
+            sage: E.random_point(order=430)
+            Traceback (most recent call last):
+            ...
+            ValueError: The curve does not have a point of order 430
+
+            sage: p = 863
+            sage: F = GF(863^2)
+            sage: E = EllipticCurve(F, [1,1])
+            sage: E.is_supersingular()
+            False
+            sage: P = E.random_point(order=31)
+            Traceback (most recent call last):
+            ...
+            NotImplementedError: Not implemented for ordinary curves or supersingular curves with cyclic group of points
         """
+
         k = self.base_field()
-        n = 2 * k.order() + 1
 
-        while True:
-            # Choose the point at infinity with probability 1/(2q + 1)
-            i = ZZ.random_element(n)
-            if not i:
-                return self.point(0)
+        if order is None:
+            n = 2 * k.order() + 1
 
-            v = self.lift_x(k.random_element(), all=True)
-            try:
-                return v[i % 2]
-            except IndexError:
-                pass
+            while True:
+                # Choose the point at infinity with probability 1/(2q + 1)
+                i = ZZ.random_element(n)
+                if not i:
+                    return self.point(0)
+
+                v = self.lift_x(k.random_element(), all=True)
+                try:
+                    return v[i % 2]
+                except IndexError:
+                    pass
+        else:
+            card = self.cardinality()
+            p = k.characteristic()
+
+            if card == (p+1)**2:
+                if (p + 1) % order != 0:
+                    raise ValueError(f"The curve does not have a point of order {order}")
+                cofactor = (p + 1) // order
+            elif card == (p-1)**2:
+                if (p - 1) % order != 0:
+                    raise ValueError(f"The curve does not have a point of order {order}")
+                cofactor = (p - 1) // order
+            else:
+                raise NotImplementedError("Not implemented for ordinary curves or supersingular curves with cyclic group of points")
+
+            while True:
+                P = self.random_element()
+                P = cofactor * P
+
+                P.set_order(multiple=order)
+                if P.order() == order:
+                    return P
 
     random_point = random_element
 
