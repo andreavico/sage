@@ -275,7 +275,7 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
 
         return [self.cardinality(extension_degree=i) for i in range(1, n + 1)]
 
-    def random_element(self, order=None):
+    def random_element(self, order=None, algorithm=None):
         """
         If order = None, return a random point on this elliptic curve,
         uniformly chosen among all rational points. Otherwise, return
@@ -284,7 +284,11 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
         INPUT:
 
         - ``order`` (int) -- if specified, the order of the generated point.
-        
+        - ``algorithm`` (string) -- the algorithm used for sampling a point of given order. Only works if ``order`` is not None.
+          - ``None`` -- automatically chooses the algorithm.
+          - ``'cofactor'`` -- sample a random point of full order and multiply it by an appropriate cofactor.
+          - ``'divPol'`` -- compute a random root of the corresponding division polynomial and try to lift it to a point on the elliptic curve.
+
         ALGORITHM:
 
         Choose the point at infinity with probability `1/(2q + 1)`.
@@ -302,10 +306,20 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
         every iteration, we simply choose a random bucket until we find
         a bucket containing a point.
 
-        If a specific order is requested, keep sampling a point as above
+        If a specific order is requested and ``algorithm=None``, automatically
+        choose the algorithm to use. If the curve is not supersingular or
+        ``order<5``, ``'divPol'`` is used. In all other cases, resort back to ``'cofactor'``.
+
+        If a specific order is requested and ``algorithm='cofactor'``, keep sampling a point as above
         and scaling it by the appropriate cofactor until it has the
         desired order. This method only works if elliptic curve is
         supersingular with non-cyclic group of points.
+
+        If a specific order is requested and ``algorithm='divPol'``, compute the corresponding
+        division polynomial and select a random root over the base field of the curve (if
+        such a root exists). Then try to lift that root to a point that is defined over the
+        base field as well. Works for ordinary and supersingular curves, but the computation
+        is very slow.
 
         AUTHORS:
 
@@ -368,19 +382,19 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
             ...
             ValueError: The curve does not have a point of order 31
 
-        Ensure that the entire point set is reachable::
+        ::
 
-            sage: E = EllipticCurve(GF(11), [2,1])
+            sage: E = EllipticCurve(GF(863^2), [0,1])
             sage: S = set()
-            sage: while len(S) < E.cardinality():
-            ....:     S.add(E.random_element())
+            sage: while len(S) < 12: # we expect 12 (= 16 - 4) points of order 4
+            ....:     S.add(E.random_element(order=4))
 
         ::
 
             sage: E = EllipticCurve(GF(863^2), [0,1])
             sage: S = set()
-            sage: while len(S) < 12: # we expect 12 (= 16 - 4) points of order 4 
-            ....:     S.add(E.random_element(order=4))
+            sage: while len(S) < 12: # we expect 12 (= 16 - 4) points of order 4
+            ....:     S.add(E.random_element(order=4, algorithm='divPol'))
 
         TESTS:
 
@@ -426,10 +440,13 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
             sage: E = EllipticCurve(F, [1,1])
             sage: E.is_supersingular()
             False
-            sage: P = E.random_point(order=31)
+            sage: P = E.random_point(order=35, algorithm='cofactor')
             Traceback (most recent call last):
             ...
             NotImplementedError: Not implemented for ordinary curves or supersingular curves with cyclic group of points
+            sage: P = E.random_point(order=35)
+            sage: P.order() == 35
+            True
         """
 
         k = self.base_field()
@@ -449,27 +466,76 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
                 except IndexError:
                     pass
         else:
-            card = self.cardinality()
-            p = k.characteristic()
+            alg = algorithm 
 
-            if card == (p+1)**2:
-                if (p + 1) % order != 0:
-                    raise ValueError(f"The curve does not have a point of order {order}")
-                cofactor = (p + 1) // order
-            elif card == (p-1)**2:
-                if (p - 1) % order != 0:
-                    raise ValueError(f"The curve does not have a point of order {order}")
-                cofactor = (p - 1) // order
+            # Automatic choice of the algorithm
+            if alg == None and (not self.is_supersingular() or order < 5):
+                alg = 'divPol'
+            elif alg == None:
+                alg = 'cofactor'
+
+            if alg == 'cofactor':
+                card = self.cardinality()
+                p = k.characteristic()
+
+                if card == (p+1)**2:
+                    if (p + 1) % order != 0:
+                        raise ValueError(f"The curve does not have a point of order {order}")
+                    cofactor = (p + 1) // order
+                elif card == (p-1)**2:
+                    if (p - 1) % order != 0:
+                        raise ValueError(f"The curve does not have a point of order {order}")
+                    cofactor = (p - 1) // order
+                else:
+                    raise NotImplementedError("Not implemented for ordinary curves or supersingular curves with cyclic group of points")
+
+                while True:
+                    P = self.random_element()
+                    P = cofactor * P
+
+                    P.set_order(multiple=order)
+                    if P.order() == order:
+                        return P
+
+            elif alg == "divPol":
+                from sage.misc.prandom import randint
+                divPol = self.division_polynomial(order)
+
+                # Exclude points whose order divides ``order``, i.e. divPol only encodes points of
+                # order exactly ``order``
+                for ell in order.prime_divisors():
+                    divPol = divPol/(divPol.gcd(self.division_polynomial(order//ell)))
+
+                roots = divPol.numerator().roots(multiplicities=False)
+
+                if not roots:
+                    raise ValueError(f'The curve does not have any {order} torsion points defined over the base field.')
+
+                P = None
+
+                if(order != 2):
+                    # A list of tuples to keep track of which points were already sampled
+                    # but have non-rational y-coordinate.
+                    roots = [(x,y) for x in roots for y in [0,1]]
+                    while(len(roots)>0):
+                        # Random sampling of a x-coordinate and a choice for the y coordinate
+                        (x,y) = roots[randint(0,len(roots)-1)]
+                        P = sorted(self.lift_x(x, all=True, extend=True))[y]
+                        if P.xy()[1] not in self.base_field():
+                            roots.remove((x,y))
+                        else:
+                            break
+                    # Fail when all torsion points have ration x-, but irration y-coordinate
+                    if len(roots)==0:
+                        raise ValueError(f'The curve does not have any {order} torsion points defined over the base field.')
+                else:
+                    # y-coodinate is bound to be 0
+                    P = self.lift_x(roots[randint(0,len(roots)-1)])
+
+                assert P.order() == order
+                return P
             else:
-                raise NotImplementedError("Not implemented for ordinary curves or supersingular curves with cyclic group of points")
-
-            while True:
-                P = self.random_element()
-                P = cofactor * P
-
-                P.set_order(multiple=order)
-                if P.order() == order:
-                    return P
+                raise NotImplementedError(f'Unknown algorithm {alg}.')
 
     random_point = random_element
 
@@ -2703,3 +2769,4 @@ def special_supersingular_curve(F, *, endomorphism=False):
     endo._degree = ZZ(q)
     endo.trace.set_cache(ZZ.zero())
     return E, endo
+
