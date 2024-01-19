@@ -507,14 +507,14 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
             # Automatic choice of the algorithm
             if alg == None:
                 if hasattr(self, "_order"): # order is cached
-                    if max(prime_factors(order)) < 11:
+                    if max(order.prime_divisors()) < 11:
                         alg = 'divPol'
                     elif self.cardinality() == (p+1)**2 or self.cardinality() == (p-1)**2:
                         alg = 'cofactor'
                     else:
                         alg = 'abelianGroup'
                 else:
-                    if max(prime_factors(order)) < 11:
+                    if max(order.prime_divisors()) < 11:
                         alg = 'divPol'
                     else:
                         alg = 'abelianGroup'
