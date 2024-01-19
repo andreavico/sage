@@ -450,6 +450,7 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
         """
 
         k = self.base_field()
+        p = k.characteristic()
 
         if order is None:
             n = 2 * k.order() + 1
@@ -469,20 +470,23 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
             alg = algorithm 
 
             # Automatic choice of the algorithm
-            if alg == None and (not self.is_supersingular() or order < 5):
-                alg = 'divPol'
-            elif alg == None:
-                alg = 'cofactor'
+            if alg == None:
+                if hasattr(self, "_order"): # order is cached
+                    if order < 11:
+                        alg = 'divPol'
+                    elif self.cardinality() == (p+1)**2 or self.cardinality() == (p-1)**2:
+                        alg = 'cofactor'
+                    else:
+                        alg = 'divPol'
+                else:
+                    alg = 'divPol'
 
             if alg == 'cofactor':
-                card = self.cardinality()
-                p = k.characteristic()
-
-                if card == (p+1)**2:
+                if self.cardinality() == (p+1)**2:
                     if (p + 1) % order != 0:
                         raise ValueError(f"The curve does not have a point of order {order}")
                     cofactor = (p + 1) // order
-                elif card == (p-1)**2:
+                elif self.cardinality() == (p-1)**2:
                     if (p - 1) % order != 0:
                         raise ValueError(f"The curve does not have a point of order {order}")
                     cofactor = (p - 1) // order
@@ -498,42 +502,95 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
                         return P
 
             elif alg == "divPol":
-                from sage.misc.prandom import randint
-                divPol = self.division_polynomial(order)
+                if order == 1:
+                    return self.point(0)
 
-                # Exclude points whose order divides ``order``, i.e. divPol only encodes points of
-                # order exactly ``order``
-                for ell in order.prime_divisors():
-                    divPol = divPol/(divPol.gcd(self.division_polynomial(order//ell)))
+                points = []
 
-                roots = divPol.numerator().roots(multiplicities=False)
+                for (ell, e) in order.factor():
+                    divpol = self.division_polynomial(ell)
+                    roots = divpol.numerator().roots(multiplicities=False)
 
-                if not roots:
-                    raise ValueError(f'The curve does not have any {order} torsion points defined over the base field.')
+                    if not roots:
+                        raise ValueError(f"The curve does not have a point of order {order}")
 
-                P = None
+                    if ell == 2:
+                        # y-coodinate is bound to be 0
+                        i = ZZ.random_element(len(roots)-1)
+                        P = self(roots[i], 0)
 
-                if(order != 2):
-                    # A list of tuples to keep track of which points were already sampled
-                    # but have non-rational y-coordinate.
-                    roots = [(x,y) for x in roots for y in [0,1]]
-                    while(len(roots)>0):
-                        # Random sampling of a x-coordinate and a choice for the y coordinate
-                        (x,y) = roots[randint(0,len(roots)-1)]
-                        P = sorted(self.lift_x(x, all=True, extend=True))[y]
-                        if P.xy()[1] not in self.base_field():
-                            roots.remove((x,y))
-                        else:
-                            break
-                    # Fail when all torsion points have ration x-, but irration y-coordinate
-                    if len(roots)==0:
-                        raise ValueError(f'The curve does not have any {order} torsion points defined over the base field.')
-                else:
-                    # y-coodinate is bound to be 0
-                    P = self.lift_x(roots[randint(0,len(roots)-1)])
+                    else:
+                        while len(roots) > 0:
+                            # Random sampling of a x-coordinate and a choice for the y coordinate
+                            i = ZZ.random_element(len(roots)-1)
+                            x = roots[i]
+                            Ps = self.lift_x(x, all=True, extend=True)
+                            if Ps[0].xy()[1] not in self.base_field():
+                                roots.remove(x)
+                            else:
+                                i = ZZ.random_element(1)
+                                P = Ps[i]
+                                break
 
-                assert P.order() == order
-                return P
+                        # Fail when all torsion points have rational x-,
+                        # but irrational y-coordinate
+                        if len(roots) == 0:
+                            raise ValueError(f"The curve does not have a point of order {order}")
+
+                    for _ in range(e - 1):
+                        divpoints = P.division_points(ell)
+                        if not divpoints:
+                            raise ValueError(f"The curve does not have a point of order {order}")
+
+                        i = ZZ.random_element(len(divpoints)-1)
+                        P = divpoints[i]
+
+                    points.append(P)
+
+                return sum(points)
+
+
+
+
+            
+                # divPol = self.division_polynomial(order)
+
+                # # Exclude points whose order divides ``order``, i.e. div`Pol only
+                # # encodes points of order exactly ``order``
+                # for ell in order.prime_divisors():
+                #     divPol = divPol/(divPol.gcd(self.division_polynomial(order//ell)))
+
+                # roots = divPol.numerator().roots(multiplicities=False)
+
+                # if not roots:
+                #     raise ValueError(f'The curve does not have any {order} \
+                #                 torsion points defined over the base field.')
+
+                # P = None
+
+                # if order != 2:
+                #     # A list of tuples to keep track of which points were
+                #     # already sampled but have non-rational y-coordinate.
+                #     roots = [(x,y) for x in roots for y in [0,1]]
+                #     while len(roots) > 0:
+                #         # Random sampling of a x-coordinate and a choice for the y coordinate
+                #         (x,y) = roots[randint(0, len(roots)-1)]
+                #         P = self.lift_x(x, all=True, extend=True)[y]
+                #         if P.xy()[1] not in self.base_field():
+                #             roots.remove((x, y))
+                #         else:
+                #             break
+                #     # Fail when all torsion points have rational x-,
+                #     # but irrational y-coordinate
+                #     if len(roots) == 0:
+                #         raise ValueError(f'The curve does not have any {order} \
+                #                 torsion points defined over the base field.')
+                # else:
+                #     # y-coodinate is bound to be 0
+                #     P = self.lift_x(roots[randint(0, len(roots)-1)])
+
+                # # assert P.order() == order
+                # return P
             else:
                 raise NotImplementedError(f'Unknown algorithm {alg}.')
 
