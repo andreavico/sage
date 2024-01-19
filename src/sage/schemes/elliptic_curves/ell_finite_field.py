@@ -283,11 +283,19 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
 
         INPUT:
 
-        - ``order`` (int) -- if specified, the order of the generated point.
-        - ``algorithm`` (string) -- the algorithm used for sampling a point of given order. Only works if ``order`` is not None.
+        - ``order`` (int) -- if specified, the order of the
+            generated point.
+        - ``algorithm`` (string) -- the algorithm used for sampling a
+            point of given order. Only works if ``order`` is not None.
           - ``None`` -- automatically chooses the algorithm.
-          - ``'cofactor'`` -- sample a random point of full order and multiply it by an appropriate cofactor.
-          - ``'divPol'`` -- compute a random root of the corresponding division polynomial and try to lift it to a point on the elliptic curve.
+          - ``'cofactor'`` -- sample a random point of full order and
+            multiply it by an appropriate cofactor.
+          - ``'divPol'`` -- compute a random root of the corresponding
+            division polynomial and try to lift it to a point on the
+            elliptic curve.
+          - ``'abelianGroup'`` -- compute a basis for the abelian
+            group and return an appropriate linear combination of the
+            generators.
 
         ALGORITHM:
 
@@ -306,20 +314,29 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
         every iteration, we simply choose a random bucket until we find
         a bucket containing a point.
 
-        If a specific order is requested and ``algorithm=None``, automatically
-        choose the algorithm to use. If the curve is not supersingular or
-        ``order<5``, ``'divPol'`` is used. In all other cases, resort back to ``'cofactor'``.
+        If a specific order is requested and ``algorithm=None``,
+        automatically choose the algorithm to use. If the curve is not
+        supersingular or ``order<5``, ``'divPol'`` is used. In all other
+        cases, resort back to ``'cofactor'``.
 
-        If a specific order is requested and ``algorithm='cofactor'``, keep sampling a point as above
-        and scaling it by the appropriate cofactor until it has the
-        desired order. This method only works if elliptic curve is
-        supersingular with non-cyclic group of points.
+        If a specific order is requested and ``algorithm='cofactor'``,
+        keep sampling a point as above and scaling it by the appropriate
+        cofactor until it has the desired order. This method only works
+        if elliptic curve is supersingular with non-cyclic group of
+        points.
 
-        If a specific order is requested and ``algorithm='divPol'``, compute the corresponding
-        division polynomial and select a random root over the base field of the curve (if
-        such a root exists). Then try to lift that root to a point that is defined over the
-        base field as well. Works for ordinary and supersingular curves, but the computation
-        is very slow.
+        If a specific order is requested and ``algorithm='divPol'``,
+        compute the corresponding division polynomial and select a random
+        root over the base field of the curve (if such a root exists).
+        Then try to lift that root to a point that is defined over the base
+        field as well. Works for ordinary and supersingular curves, but the
+        computation is very slow.
+
+        If a specific order is requested and ``algorithm='abelianGroup'``,
+        compute the two generators of the abelian group of the curve and
+        scale both such that they have the correct order. Then compute a
+        random linear combination of them. This method works for ordinary
+        and supersingular curves, but is potentially very wasteful.
 
         AUTHORS:
 
@@ -416,7 +433,7 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
             sage: p = 863
             sage: F = GF(863^2)
             sage: E = EllipticCurve(F, [1,0])
-            sage: for i in range(5):
+            sage: for i in range(1,5):
             ....:     P = E.random_point(order=2^i)
             ....:     assert P.order() == 2^i
             sage: E = E.quadratic_twist()
@@ -483,7 +500,7 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
                 except IndexError:
                     pass
         else:
-            alg = algorithm 
+            alg = algorithm
 
             # Automatic choice of the algorithm
             if alg == None:
@@ -565,6 +582,29 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
 
                 return sum(points)
 
+            elif alg == "abelianGroup":
+                from sage.misc.prandom import randint
+                (P,Q) = self.gens()
+
+                # Multiply P, Q by an appropriate cofactor s.t. both have the correct order
+                P = (P.order()//(order.gcd(P.order()))) * P
+                Q = (Q.order()//(order.gcd(Q.order()))) * Q
+
+                if P.order() != order and Q.order() != order:
+                    raise ValueError(f'The curve does not have any {order} torsion points defined over the base field.')
+
+                s = order
+                t = order
+
+                # Avoid the case where, say, order = 14, ord(P) = 14, ord(Q) = 14 and s = 7, t = 2
+                # which results in a point of order 7
+                while(gcd(order, gcd(s,t)) > 1):
+                    s = randint(0,P.order()-1)
+                    t = randint(0,Q.order()-1)
+
+                R = s*P + t*Q
+                assert R.order() == order
+                return R
             else:
                 raise NotImplementedError(f'Unknown algorithm {alg}')
 
@@ -2800,4 +2840,3 @@ def special_supersingular_curve(F, *, endomorphism=False):
     endo._degree = ZZ(q)
     endo.trace.set_cache(ZZ.zero())
     return E, endo
-
