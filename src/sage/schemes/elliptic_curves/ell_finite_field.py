@@ -596,9 +596,9 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
                 s = order
                 t = order
 
-                # Avoid the case where, say, order = 14, ord(P) = 14, ord(Q) = 14 and s = 7, t = 2
-                # which results in a point of order 7
-                while(gcd(order, gcd(s,t)) > 1):
+                # Avoid the case where, say, order = 2*7*7 = 98, ord(P) = ord(Q) = 98 and s = 49, t = 14
+                # which results in a point of order 14
+                while(gcd([s,t,order]) > 1):
                     s = randint(0,P.order()-1)
                     t = randint(0,Q.order()-1)
 
