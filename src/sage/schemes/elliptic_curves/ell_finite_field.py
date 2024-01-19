@@ -315,9 +315,11 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
         a bucket containing a point.
 
         If a specific order is requested and ``algorithm=None``,
-        automatically choose the algorithm to use. If the curve is not
-        supersingular or ``order<5``, ``'divPol'`` is used. In all other
-        cases, resort back to ``'cofactor'``.
+        automatically choose the algorithm to use. If the largest prime
+        factor of ``order`` is smaller than 11, choose ``'divPol'``.
+        Otherwise, if the order of the curve is cached and the curve is
+        known to be supersingular, choose ``'cofactor'``. In all other
+        cases choose ``'abelianGroup'``.
 
         If a specific order is requested and ``algorithm='cofactor'``,
         keep sampling a point as above and scaling it by the appropriate
@@ -336,7 +338,7 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
         compute the two generators of the abelian group of the curve and
         scale both such that they have the correct order. Then compute a
         random linear combination of them. This method works for ordinary
-        and supersingular curves, but is potentially very wasteful.
+        and supersingular curves, but is potentially slow.
 
         AUTHORS:
 
@@ -505,14 +507,17 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
             # Automatic choice of the algorithm
             if alg == None:
                 if hasattr(self, "_order"): # order is cached
-                    if order < 11:
+                    if max(prime_factors(order)) < 11:
                         alg = 'divPol'
                     elif self.cardinality() == (p+1)**2 or self.cardinality() == (p-1)**2:
                         alg = 'cofactor'
                     else:
-                        alg = 'divPol'
+                        alg = 'abelianGroup'
                 else:
-                    alg = 'divPol'
+                    if max(prime_factors(order)) < 11:
+                        alg = 'divPol'
+                    else:
+                        alg = 'abelianGroup'
 
             if alg == 'cofactor':
                 if self.cardinality() == (p+1)**2:
