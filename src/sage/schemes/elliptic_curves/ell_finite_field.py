@@ -386,15 +386,8 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
 
             sage: E = EllipticCurve(GF(863^2), [0,1])
             sage: S = set()
-            sage: while len(S) < 12: # we expect 12 (= 16 - 4) points of order 4
+            sage: while len(S) < 12: # we expect 12 points of order 4
             ....:     S.add(E.random_element(order=4))
-
-        ::
-
-            sage: E = EllipticCurve(GF(863^2), [0,1])
-            sage: S = set()
-            sage: while len(S) < 12: # we expect 12 (= 16 - 4) points of order 4
-            ....:     S.add(E.random_element(order=4, algorithm='divPol'))
 
         TESTS:
 
@@ -427,6 +420,7 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
             ....:     P = E.random_point(order=2^i)
             ....:     assert P.order() == 2^i
             sage: E = E.quadratic_twist()
+            sage: E.set_order(862^2)
             sage: P = E.random_point(order=431)
             sage: P.order() == 431
             True
@@ -434,6 +428,28 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
             Traceback (most recent call last):
             ...
             ValueError: The curve does not have a point of order 430
+
+            ::
+
+            sage: E = EllipticCurve(GF(863^2), [0,1])
+            sage: S = set()
+            sage: while len(S) < 12: # we expect 12 (= 16 - 4) points of order 4
+            ....:     S.add(E.random_element(order=4, algorithm="cofactor"))
+            sage: S = set()
+            sage: while len(S) < 12: # we expect 12 (= 16 - 4) points of order 4
+            ....:     S.add(E.random_element(order=4, algorithm="divPol"))
+            sage: S = set()
+            sage: while len(S) < 12: # we expect 12 (= 16 - 4) points of order 4
+            ....:     S.add(E.random_element(order=4))
+            sage: S = set()
+            sage: while len(S) < 96: # we expect 96 points of order 16
+            ....:     S.add(E.random_element(order=16, algorithm="divPol"))
+            sage: S = set()
+            sage: while len(S) < 96: # we expect 96 points of order 16
+            ....:     S.add(E.random_element(order=16, algorithm="cofactor"))
+            sage: S = set()
+            sage: while len(S) < 96: # we expect 96 points of order 16
+            ....:     S.add(E.random_element(order=16, algorithm="divPol"))
 
             sage: p = 863
             sage: F = GF(863^2)
@@ -516,19 +532,19 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
 
                     if ell == 2:
                         # y-coodinate is bound to be 0
-                        i = ZZ.random_element(len(roots)-1)
+                        i = ZZ.random_element(len(roots))
                         P = self(roots[i], 0)
 
                     else:
                         while len(roots) > 0:
                             # Random sampling of a x-coordinate and a choice for the y coordinate
-                            i = ZZ.random_element(len(roots)-1)
+                            i = ZZ.random_element(len(roots))
                             x = roots[i]
                             Ps = self.lift_x(x, all=True, extend=True)
                             if Ps[0].xy()[1] not in self.base_field():
                                 roots.remove(x)
                             else:
-                                i = ZZ.random_element(1)
+                                i = ZZ.random_element(2)
                                 P = Ps[i]
                                 break
 
@@ -542,57 +558,15 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
                         if not divpoints:
                             raise ValueError(f"The curve does not have a point of order {order}")
 
-                        i = ZZ.random_element(len(divpoints)-1)
+                        i = ZZ.random_element(len(divpoints))
                         P = divpoints[i]
 
                     points.append(P)
 
                 return sum(points)
 
-
-
-
-            
-                # divPol = self.division_polynomial(order)
-
-                # # Exclude points whose order divides ``order``, i.e. div`Pol only
-                # # encodes points of order exactly ``order``
-                # for ell in order.prime_divisors():
-                #     divPol = divPol/(divPol.gcd(self.division_polynomial(order//ell)))
-
-                # roots = divPol.numerator().roots(multiplicities=False)
-
-                # if not roots:
-                #     raise ValueError(f'The curve does not have any {order} \
-                #                 torsion points defined over the base field.')
-
-                # P = None
-
-                # if order != 2:
-                #     # A list of tuples to keep track of which points were
-                #     # already sampled but have non-rational y-coordinate.
-                #     roots = [(x,y) for x in roots for y in [0,1]]
-                #     while len(roots) > 0:
-                #         # Random sampling of a x-coordinate and a choice for the y coordinate
-                #         (x,y) = roots[randint(0, len(roots)-1)]
-                #         P = self.lift_x(x, all=True, extend=True)[y]
-                #         if P.xy()[1] not in self.base_field():
-                #             roots.remove((x, y))
-                #         else:
-                #             break
-                #     # Fail when all torsion points have rational x-,
-                #     # but irrational y-coordinate
-                #     if len(roots) == 0:
-                #         raise ValueError(f'The curve does not have any {order} \
-                #                 torsion points defined over the base field.')
-                # else:
-                #     # y-coodinate is bound to be 0
-                #     P = self.lift_x(roots[randint(0, len(roots)-1)])
-
-                # # assert P.order() == order
-                # return P
             else:
-                raise NotImplementedError(f'Unknown algorithm {alg}.')
+                raise NotImplementedError(f'Unknown algorithm {alg}')
 
     random_point = random_element
 
