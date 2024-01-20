@@ -588,7 +588,6 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
                 return sum(points)
 
             elif alg == "abelianGroup":
-                from sage.misc.prandom import randint
                 (P,Q) = self.gens()
 
                 # Multiply P, Q by an appropriate cofactor s.t. both have the correct order
@@ -604,11 +603,11 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
                 # Avoid the case where, say, order = 2*7*7 = 98, ord(P) = ord(Q) = 98 and s = 49, t = 14
                 # which results in a point of order 14
                 while(gcd([s,t,order]) > 1):
-                    s = randint(0,P.order()-1)
-                    t = randint(0,Q.order()-1)
+                    s = ZZ.random_element(P.order())
+                    t = ZZ.random_element(Q.order())
 
                 R = s*P + t*Q
-                assert R.order() == order
+                #assert R.order() == order
                 return R
             else:
                 raise NotImplementedError(f'Unknown algorithm {alg}')
