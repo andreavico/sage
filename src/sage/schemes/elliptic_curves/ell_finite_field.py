@@ -588,7 +588,15 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
                 return sum(points)
 
             elif alg == "abelianGroup":
-                (P,Q) = self.gens()
+                generators = self.gens()
+
+                if len(generators) == 2:
+                    (P,Q) = generators 
+                elif len(generators) == 1:
+                    P = generators[0]
+                    Q = self(0)
+                else: 
+                    raise ValueError(f'The curve does not have any generators defined over the base field.')
 
                 # Multiply P, Q by an appropriate cofactor s.t. both have the correct order
                 P = (P.order()//(order.gcd(P.order()))) * P
@@ -604,7 +612,10 @@ class EllipticCurve_finite_field(EllipticCurve_field, HyperellipticCurve_finite_
                 # which results in a point of order 14
                 while(gcd([s,t,order]) > 1):
                     s = ZZ.random_element(P.order())
-                    t = ZZ.random_element(Q.order())
+                    if not Q:
+                        t = 0 # avoid the case Q.order() = 1
+                    else:
+                        t = ZZ.random_element(Q.order())
 
                 R = s*P + t*Q
                 #assert R.order() == order
